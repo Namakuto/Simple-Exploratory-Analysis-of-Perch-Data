@@ -1,0 +1,165 @@
+---
+title: "An Analysis of Perch Data"
+author: "Nyasha M"
+date: "21/01/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r setwd, echo=FALSE, include=FALSE, results='hide'}
+setwd("~/Jupyter Projects/R/Biostatistics Assignment 5")
+```
+
+# Introduction
+
+This is an an analysis of some basic perch data (in a .csv file) from an old class of mine in biostatistics. The purpose of this report was to mainly show my analytic abilities, including my ability to visualize data.
+
+## Loading the data and data pre-processing/cleaning
+
+Let's first load the dataset and preview it:
+
+```{r perch_head}
+perch<-read.csv("Q4.csv", header=TRUE)
+head(perch)
+```
+
+We can also see how many observations there are per variable, and what class each variables is:
+
+```{r perch_str}
+str(perch)
+```
+
+Let's `append` our data.frame so we do not need to specify variable names from the dataset each time. 
+
+We can also quickly build a function to show us how many missing values there are per variable (stored in `nmiss`), and consequently, what percentage of the data is missing per variable (stored in `p_miss`).
+
+```{r attach_p, include=FALSE}
+attach(perch)
+```
+``` {r append_data.frame_descriptive }
+nmiss<-vector()
+p_miss<-vector()
+for (i in 1:ncol(perch)) {
+  nmiss<-append(nmiss, sum(is.na(perch[[i]]))
+  )
+  p_miss<-append(p_miss, nmiss[i]/length(perch[[i]])
+  )
+}
+perch.info<-data.frame(var_name=names(perch), nmiss, p_miss)
+perch.info
+```
+
+No missing data... this makes it easy. Let's now draw some plots to visualize our data.
+
+## Exploratory analysis: data visualization
+
+The `ggplot2` package in R allows us to make some lovely-looking plots. Let's run some histograms (frequencies) and kernel density plots: 
+
+```{r univariate_plots, echo=FALSE}
+library(ggplot2); library(gridExtra)
+
+plt_hs<-list()
+plt_box<-list()
+for (i in 1:ncol(perch)){
+  
+  plt_hs[[i]]<-ggplot(perch, mapping=aes_string(x=names(perch[i]))) + 
+    geom_histogram(fill="#96D887", col="grey20", binwidth=6, alpha=.7, lwd=0.3) +
+    geom_density(aes(y=..count..*6), col="grey40", lwd=0.8) + 
+    theme_minimal()
+  
+    plt_box[[i]]<-ggplot(perch, mapping=aes_string(x=names(perch[i]))) +
+    stat_boxplot(geom="errorbar", lwd=0.4, width=0.4, col="grey20")+
+    geom_boxplot(fill="#FFEB88", lwd=0.4, col="grey20") 
+}
+do.call("grid.arrange", c(plt_hs[1], plt_box[1], plt_hs[2], plt_box[2], top="Histograms, Kernel Densities, and Boxplots of all Variables", ncol=2))
+do.call("grid.arrange", c(plt_hs[3], plt_box[3], plt_hs[4], plt_box[4], top="", ncol=2))
+```
+
+I can use the `psych` package in R to get some more detailed descriptive information across all my variables. The skewness of each variable appears to correspond appropriately with what we were seeing in our univariate plots.
+
+```{r load_psych, include=FALSE, out.height="90%", out.width="90%"}
+library(psych)
+```
+```{r univariate_text, warning=FALSE, echo=FALSE}
+describe(perch, type = 2)
+```
+
+I'll now draw a scatterplot matrix across all variables to see if there are any possible linear trends. This is an easy way to perform some basic/introductory bivariate analyses across all our variables to better understand what is happending in the dataset (i.e., what patterns may/may not be present, basic data visualization).
+
+A scatterplot matrix would likely be feasible given that we are only working with 4 variables in this dataset. For larger datasets, we may want to skip this step and go straight to a correlation matrix/correlation matrix plot.
+
+```{r scatter_matrix, echo=FALSE}
+plot(perch, main="Scatterplot Matrix of all Variables", col="grey30", pch=16)
+```
+
+No obvious linear trends, except for perhaps between flength and totlength. 
+
+Let's load the `corrplot` package in R to examine any potential linear trends further. The `corrplot` package will let us draw a correlation matrix between all variables. The matrix will tell us which two variables have a stronger linear trend (higher correlation) compared to any other pairs. 
+
+I'll place the results of a significance test of each correlation on top.For aesthetic reasons, I'm only displaying whether the correlation was found to be statistically significant (p < .05).
+
+```{r corrplot_matrix, echo=FALSE, message=FALSE, fig.pos=160, out.height="80%", out.width="80%"}
+library(corrplot)
+
+# Create correlation matrix with corresponding significance test.
+cor.perch<-cor(perch); sig.perch<-cor.mtest(perch) 
+
+# Find the indices of the significant correlations and save these into "index.sig"
+index.sig<-which(sig.perch$p<.05, arr.ind = TRUE)
+
+# Use the above indices to draw only the significant Pearson's R values, and store these r values into "cor.r".
+cor.r<-cor.perch[index.sig]
+
+# Make a corrplot which prints both the r and p-values of only those tiles with p<.05.
+corrplot(cor.perch, method="color", 
+         p.mat = sig.perch$p,
+         sig.level = .05,
+         insig = "label_sig", pch = paste(
+                                          paste("r = ", format(round(cor.r, 2), nsmall=2), sep=""), 
+                                          paste("p < .05"), sep="\n"),
+         pch.cex = 1,
+         pch.col = "white",
+         addgrid.col = "grey20",
+         tl.col = "black")
+```
+
+Which variables in my dataset had statistically significant correlations (p < .05), ignoring those along the diagnoal?
+
+```{r best_correlations, echo=FALSE}
+cor.perch.df<-as.data.frame(cor.perch)
+
+# Select only those correlations which are not only significant at p<.05, but also have r<.99.
+name.sig<-which(cor.perch==cor.r[cor.r<.99], arr.ind = TRUE)
+best.cor<-dimnames(name.sig)[[1]]
+best.cor
+```
+
+We have a list of some variables which look like they could be suitable for perhaps, linear regression, or something similar of the sort. 
+
+
+```{r qplot_scat, echo=FALSE, fig.show="hold", out.height="50%", out.width="50%", message=FALSE}
+ggplot(data=perch, mapping=aes(x=flength, y=totlength)) +
+  geom_point(size=2, shape=21, fill="grey20", col="black", stroke=1)+
+  geom_smooth(method = "lm", alpha=.2, col="red")+
+  theme_minimal() + 
+  theme(plot.title = element_text(size=18, hjust=0.5, face="bold"))+
+  ggtitle("\nScatter plot with 95% CI \nbetween flength and totlength", )
+
+ggplot(data=perch, mapping=aes(x=flength, y=bdepth)) +
+  geom_point(size=2, shape=21, fill="grey20", col="black", stroke=1)+
+  geom_smooth(method = "lm", alpha=.2, col="red")+
+  theme_minimal() + 
+  theme(plot.title = element_text(size=18, hjust = 0.5, face="bold"))+
+  ggtitle("\nScatter plot with 95% CI \nbetween flength and bdepth")
+
+```
+
+NOTE: Recall, I am only performing a data pre-processing/exploratory analysis here, and not a full-on modeling procedure, as the intent of this report was just to showcase my data visualization/report-writing abilities. There is not much to visualize once we are building our statistical models (except perhaps the diagnostic plots)!
+
+
+
+
+
